@@ -45,7 +45,6 @@ TapTapWrap.prototype = {
         let data = JSON.parse(aData);
         let win = w.BrowserApp.selectedBrowser.contentWindow;
         let element = w.ElementTouchHelper.anyElementFromPoint(win, data.x, data.y);
-        let baseElement = element;
 
         while (element && !w.BrowserEventHandler._shouldZoomToElement(element))
             element = element.parentNode;
@@ -60,20 +59,17 @@ TapTapWrap.prototype = {
         let zoom = (viewport.width / width);
         let newFontSize = (0.5 / zoom) + "in";
 
-        while (baseElement) {
-            if (typeof this._savedProperties[baseElement] == "undefined") {
-                if (baseElement.style) {
-                    this._savedProperties.push([baseElement, baseElement.style.fontSize, baseElement.style.lineHeight]);
+        let nodeIterator = element.ownerDocument.createNodeIterator(element, 1 /*SHOW_ELEMENT*/, null);
+        for (var elem = nodeIterator.nextNode(); elem; elem = nodeIterator.nextNode()) {
+            if (typeof this._savedProperties[elem] == "undefined") {
+                if (elem.style) {
+                    this._savedProperties.push([elem, elem.style.fontSize, elem.style.lineHeight]);
                 } else {
-                    this._savedProperties.push([baseElement, "", ""]);
+                    this._savedProperties.push([elem, "", ""]);
                 }
             }
-            baseElement.style.fontSize = newFontSize;
-            baseElement.style.lineHeight = newFontSize;
-            if (baseElement == element) {
-                break;
-            }
-            baseElement = baseElement.parentNode;
+            elem.style.fontSize = newFontSize;
+            elem.style.lineHeight = newFontSize;
         }
     }
 };
