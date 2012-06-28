@@ -61,12 +61,10 @@ TapTapWrap.prototype = {
 
         let nodeIterator = element.ownerDocument.createNodeIterator(element, 1 /*SHOW_ELEMENT*/, null);
         for (var elem = nodeIterator.nextNode(); elem; elem = nodeIterator.nextNode()) {
-            if (typeof this._savedProperties[elem] == "undefined") {
-                if (elem.style) {
-                    this._savedProperties.push([elem, elem.style.fontSize, elem.style.lineHeight]);
-                } else {
-                    this._savedProperties.push([elem, "", ""]);
-                }
+            if (elem.style) {
+                this._savedProperties.push([elem, elem.style.fontSize, elem.style.lineHeight]);
+            } else {
+                this._savedProperties.push([elem, "", ""]);
             }
             elem.style.fontSize = newFontSize;
             elem.style.lineHeight = newFontSize;
