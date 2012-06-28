@@ -10,61 +10,100 @@ function dump(a) {
 
 var gTapTapWraps = new Array();
 
-function TapTapWrap(aWindow) {
-    this._window = aWindow;
+function TapTapWrap(aXulWindow) {
+    this._xulWindow = aXulWindow;
     this._savedProperties = new Array();
 
     Services.obs.addObserver(this, "Gesture:DoubleTap", false);
-    aWindow.BrowserEventHandler._zoomOut_original = aWindow.BrowserEventHandler._zoomOut;
-    aWindow.BrowserEventHandler._zoomOut = function() {
-        gTapTapWraps[aWindow].clearWrapping();
+    aXulWindow.BrowserEventHandler._zoomOut_original = aXulWindow.BrowserEventHandler._zoomOut;
+    aXulWindow.BrowserEventHandler._zoomOut = function() {
+        gTapTapWraps[aXulWindow].clearWrapping(aXulWindow.BrowserApp.selectedBrowser.contentWindow);
         this._zoomOut_original();
     };
 }
 
 TapTapWrap.prototype = {
     detach: function() {
-        var w = this._window;
-        w.BrowserEventHandler._zoomOut = w.BrowserEventHandler._zoomOut_original;
-        delete w.BrowserEventHandler._zoomOut_original;
+        var xw = this._xulWindow;
+        xw.BrowserEventHandler._zoomOut = xw.BrowserEventHandler._zoomOut_original;
+        delete xw.BrowserEventHandler._zoomOut_original;
         Services.obs.removeObserver(this, "Gesture:DoubleTap", false);
     },
 
-    clearWrapping: function() {
-        while (this._savedProperties.length) {
-            let [element, fontSize, lineHeight] = this._savedProperties.pop();
+    addPropertiesFor: function(aWindow) {
+        for (var i = this._savedProperties.length - 1; i >= 0; i--) {
+            if (this._savedProperties[i].window == aWindow) {
+                return this._savedProperties[i].properties;
+            }
+        }
+        var props = { window: aWindow, properties: new Array() };
+        this._savedProperties.push(props);
+        aWindow.addEventListener("unload", this.unloadListener, false);
+        return props.properties;
+    },
+
+    removePropertiesFor: function(aWindow) {
+        for (var i = this._savedProperties.length - 1; i >= 0; i--) {
+            if (this._savedProperties[i].window == aWindow) {
+                var props = this._savedProperties[i];
+                this._savedProperties.splice(i, 1);
+                aWindow.removeEventListener("unload", this.unloadListener, false);
+                return props.properties;
+            }
+        }
+        return null;
+    },
+
+    clearWrapping: function(aWindow) {
+        for (var i = 0; i < aWindow.frames.length; i++) {
+            this.clearWrapping(aWindow.frames[i]);
+        }
+
+        let props = this.removePropertiesFor(aWindow);
+        if (!props) {
+            return;
+        }
+
+        while (props.length) {
+            let [element, fontSize, lineHeight] = props.pop();
             element.style.fontSize = fontSize;
             element.style.lineHeight = lineHeight;
         }
-        this._savedProperties = new Array();
+    },
+
+    unloadListener: function(e) {
+        this.clearWrapping(e.currentTarget);
     },
 
     observe: function(aSubject, aTopic, aData) {
-        let w = this._window;
+        // <code yoinkedFrom="browser.js">
+        let xw = this._xulWindow;
 
         let data = JSON.parse(aData);
-        let win = w.BrowserApp.selectedBrowser.contentWindow;
-        let element = w.ElementTouchHelper.anyElementFromPoint(win, data.x, data.y);
+        let win = xw.BrowserApp.selectedBrowser.contentWindow;
+        let element = xw.ElementTouchHelper.anyElementFromPoint(win, data.x, data.y);
 
-        while (element && !w.BrowserEventHandler._shouldZoomToElement(element))
+        while (element && !xw.BrowserEventHandler._shouldZoomToElement(element))
             element = element.parentNode;
   
         if (!element) {
             return;
         }
+        // </code>
 
-        let width = w.ElementTouchHelper.getBoundingContentRect(element).w + 30;
-        let viewport = w.BrowserApp.selectedTab.getViewport();
+        let width = xw.ElementTouchHelper.getBoundingContentRect(element).w + 30;
+        let viewport = xw.BrowserApp.selectedTab.getViewport();
         width = Math.min(width, viewport.cssPageRight - viewport.cssPageLeft);
         let zoom = (viewport.width / width);
         let newFontSize = (0.5 / zoom) + "in";
 
+        let props = this.addPropertiesFor(element.ownerDocument.defaultView);
         let nodeIterator = element.ownerDocument.createNodeIterator(element, 1 /*SHOW_ELEMENT*/, null);
         for (var elem = nodeIterator.nextNode(); elem; elem = nodeIterator.nextNode()) {
             if (elem.style) {
-                this._savedProperties.push([elem, elem.style.fontSize, elem.style.lineHeight]);
+                props.push([elem, elem.style.fontSize, elem.style.lineHeight]);
             } else {
-                this._savedProperties.push([elem, "", ""]);
+                props.push([elem, "", ""]);
             }
             elem.style.fontSize = newFontSize;
             elem.style.lineHeight = newFontSize;
