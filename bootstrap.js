@@ -75,6 +75,14 @@ TapTapWrap.prototype = {
         this.clearWrapping(e.currentTarget);
     },
 
+    shouldZoomToElement: function(element) {
+        if (this._xulWindow.BrowserEventHandler._shouldZoomToElement) {
+            return this._xulWindow.BrowserEventHandler._shouldZoomToElement;
+        } else {
+            return element.ownerDocument.defaultView.getComputedStyle(element, null).display != "inline";
+        }
+    },
+
     observe: function(aSubject, aTopic, aData) {
         // <code yoinkedFrom="browser.js">
         let xw = this._xulWindow;
@@ -83,8 +91,9 @@ TapTapWrap.prototype = {
         let win = xw.BrowserApp.selectedBrowser.contentWindow;
         let element = xw.ElementTouchHelper.anyElementFromPoint(win, data.x, data.y);
 
-        while (element && !xw.BrowserEventHandler._shouldZoomToElement(element))
+        while (element && !this.shouldZoomToElement(element)) {
             element = element.parentNode;
+        }
   
         if (!element) {
             return;
