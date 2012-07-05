@@ -1,6 +1,6 @@
 var Cc = Components.classes;
 var Ci = Components.interfaces;
-let Cu = Components.utils;
+var Cu = Components.utils;
 
 Cu.import("resource://gre/modules/Services.jsm");
 
@@ -59,13 +59,13 @@ TapTapWrap.prototype = {
             this.clearWrapping(aWindow.frames[i]);
         }
 
-        let props = this.removePropertiesFor(aWindow);
+        var props = this.removePropertiesFor(aWindow);
         if (!props) {
             return;
         }
 
         while (props.length) {
-            let [element, fontSize, lineHeight] = props.pop();
+            var [element, fontSize, lineHeight] = props.pop();
             element.style.fontSize = fontSize;
             element.style.lineHeight = lineHeight;
         }
@@ -85,11 +85,11 @@ TapTapWrap.prototype = {
 
     observe: function(aSubject, aTopic, aData) {
         // <code yoinkedFrom="browser.js">
-        let xw = this._xulWindow;
+        var xw = this._xulWindow;
 
-        let data = JSON.parse(aData);
-        let win = xw.BrowserApp.selectedBrowser.contentWindow;
-        let element = xw.ElementTouchHelper.anyElementFromPoint(win, data.x, data.y);
+        var data = JSON.parse(aData);
+        var win = xw.BrowserApp.selectedBrowser.contentWindow;
+        var element = xw.ElementTouchHelper.anyElementFromPoint(win, data.x, data.y);
 
         while (element && !this.shouldZoomToElement(element)) {
             element = element.parentNode;
@@ -100,14 +100,14 @@ TapTapWrap.prototype = {
         }
         // </code>
 
-        let width = xw.ElementTouchHelper.getBoundingContentRect(element).w + 30;
-        let viewport = xw.BrowserApp.selectedTab.getViewport();
+        var width = xw.ElementTouchHelper.getBoundingContentRect(element).w + 30;
+        var viewport = xw.BrowserApp.selectedTab.getViewport();
         width = Math.min(width, viewport.cssPageRight - viewport.cssPageLeft);
-        let zoom = (viewport.width / width);
-        let newFontSize = (0.5 / zoom) + "in";
+        var zoom = (viewport.width / width);
+        var newFontSize = (this._textSize / zoom) + "in";
 
-        let props = this.addPropertiesFor(element.ownerDocument.defaultView);
-        let nodeIterator = element.ownerDocument.createNodeIterator(element, 1 /*SHOW_ELEMENT*/, null);
+        var props = this.addPropertiesFor(element.ownerDocument.defaultView);
+        var nodeIterator = element.ownerDocument.createNodeIterator(element, 1 /*SHOW_ELEMENT*/, null);
         for (var elem = nodeIterator.nextNode(); elem; elem = nodeIterator.nextNode()) {
             if (elem.style) {
                 props.push([elem, elem.style.fontSize, elem.style.lineHeight]);
@@ -133,7 +133,7 @@ function detachFrom(aWindow) {
 
 var browserListener = {
     onOpenWindow: function(aWindow) {
-        let win = aWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
+        var win = aWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
         win.addEventListener("UIReady", function(aEvent) {
             win.removeEventListener("UIReady", win, false);
             attachTo(win);
@@ -149,7 +149,7 @@ var browserListener = {
 };
 
 function startup(aData, aReason) {
-    let enumerator = Services.wm.getEnumerator("navigator:browser");
+    var enumerator = Services.wm.getEnumerator("navigator:browser");
     while (enumerator.hasMoreElements()) {
         attachTo(enumerator.getNext().QueryInterface(Ci.nsIDOMWindow));
     }
@@ -163,7 +163,7 @@ function shutdown(aData, aReason) {
         return;
 
     Services.wm.removeListener(browserListener);
-    let enumerator = Services.wm.getEnumerator("navigator:browser");
+    var enumerator = Services.wm.getEnumerator("navigator:browser");
     while (enumerator.hasMoreElements()) {
         detachFrom(enumerator.getNext().QueryInterface(Ci.nsIDOMWindow));
     }
