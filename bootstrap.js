@@ -9,10 +9,17 @@ function dump(a) {
 }
 
 var gTapTapWraps = new Array();
+var gPrefTextSize = "extensions.taptapwrap.textsize";
+var gPrefTextSizeDefault = 500;
 
 function TapTapWrap(aXulWindow) {
     this._xulWindow = aXulWindow;
     this._savedProperties = new Array();
+    try {
+        this._textSize = Services.prefs.getIntPref(gPrefTextSize) / 1000;
+    } catch (e) {
+        this._textSize = gPrefTextSizeDefault / 1000;
+    }
 
     Services.obs.addObserver(this, "Gesture:DoubleTap", false);
     aXulWindow.BrowserEventHandler._zoomOut_original = aXulWindow.BrowserEventHandler._zoomOut;
@@ -20,10 +27,12 @@ function TapTapWrap(aXulWindow) {
         gTapTapWraps[aXulWindow].clearWrapping(aXulWindow.BrowserApp.selectedBrowser.contentWindow);
         this._zoomOut_original();
     };
+    Services.prefs.addObserver(gPrefTextSize, this, false);
 }
 
 TapTapWrap.prototype = {
     detach: function() {
+        Services.prefs.removeObserver("extensions.taptapwrap.textsize", this, false);
         var xw = this._xulWindow;
         xw.BrowserEventHandler._zoomOut = xw.BrowserEventHandler._zoomOut_original;
         delete xw.BrowserEventHandler._zoomOut_original;
@@ -84,38 +93,46 @@ TapTapWrap.prototype = {
     },
 
     observe: function(aSubject, aTopic, aData) {
-        // <code yoinkedFrom="browser.js">
-        var xw = this._xulWindow;
+        if (aTopic == "Gesture:DoubleTap") {
+            // <code yoinkedFrom="browser.js">
+            var xw = this._xulWindow;
 
-        var data = JSON.parse(aData);
-        var win = xw.BrowserApp.selectedBrowser.contentWindow;
-        var element = xw.ElementTouchHelper.anyElementFromPoint(win, data.x, data.y);
+            var data = JSON.parse(aData);
+            var win = xw.BrowserApp.selectedBrowser.contentWindow;
+            var element = xw.ElementTouchHelper.anyElementFromPoint(win, data.x, data.y);
 
-        while (element && !this.shouldZoomToElement(element)) {
-            element = element.parentNode;
-        }
-  
-        if (!element) {
-            return;
-        }
-        // </code>
-
-        var width = xw.ElementTouchHelper.getBoundingContentRect(element).w + 30;
-        var viewport = xw.BrowserApp.selectedTab.getViewport();
-        width = Math.min(width, viewport.cssPageRight - viewport.cssPageLeft);
-        var zoom = (viewport.width / width);
-        var newFontSize = (this._textSize / zoom) + "in";
-
-        var props = this.addPropertiesFor(element.ownerDocument.defaultView);
-        var nodeIterator = element.ownerDocument.createNodeIterator(element, 1 /*SHOW_ELEMENT*/, null);
-        for (var elem = nodeIterator.nextNode(); elem; elem = nodeIterator.nextNode()) {
-            if (elem.style) {
-                props.push([elem, elem.style.fontSize, elem.style.lineHeight]);
-            } else {
-                props.push([elem, "", ""]);
+            while (element && !this.shouldZoomToElement(element)) {
+                element = element.parentNode;
             }
-            elem.style.fontSize = newFontSize;
-            elem.style.lineHeight = newFontSize;
+
+            if (!element) {
+                return;
+            }
+            // </code>
+
+            var width = xw.ElementTouchHelper.getBoundingContentRect(element).w + 30;
+            var viewport = xw.BrowserApp.selectedTab.getViewport();
+            width = Math.min(width, viewport.cssPageRight - viewport.cssPageLeft);
+            var zoom = (viewport.width / width);
+            var newFontSize = (this._textSize / zoom) + "in";
+
+            var props = this.addPropertiesFor(element.ownerDocument.defaultView);
+            var nodeIterator = element.ownerDocument.createNodeIterator(element, 1 /*SHOW_ELEMENT*/, null);
+            for (var elem = nodeIterator.nextNode(); elem; elem = nodeIterator.nextNode()) {
+                if (elem.style) {
+                    props.push([elem, elem.style.fontSize, elem.style.lineHeight]);
+                } else {
+                    props.push([elem, "", ""]);
+                }
+                elem.style.fontSize = newFontSize;
+                elem.style.lineHeight = newFontSize;
+            }
+        } else if (aTopic == "nsPref:changed" && aData == gPrefTextSize) {
+            try {
+                this._textSize = Services.prefs.getIntPref(gPrefTextSize) / 1000;
+            } catch (e) {
+                this._textSize = gPrefTextSizeDefault / 1000;
+            }
         }
     }
 };
@@ -149,6 +166,8 @@ var browserListener = {
 };
 
 function startup(aData, aReason) {
+    Services.prefs.setIntPref(gPrefTextSize, gPrefTextSizeDefault);
+
     var enumerator = Services.wm.getEnumerator("navigator:browser");
     while (enumerator.hasMoreElements()) {
         attachTo(enumerator.getNext().QueryInterface(Ci.nsIDOMWindow));
