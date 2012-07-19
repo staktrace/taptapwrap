@@ -2,37 +2,50 @@ var Cc = Components.classes;
 var Ci = Components.interfaces;
 var Cu = Components.utils;
 
-Cu.import("resource://gre/modules/Services.jsm");
-
-function dump(a) {
-  Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService).logStringMessage(a);
-}
-
 var gTapTapWraps = new Array();
 var gPrefTextSize = "extensions.taptapwrap.textsize";
 var gPrefTextSizeDefault = 500;
 
+Cu.import("resource://gre/modules/Services.jsm");
+
+function dump(a) {
+    Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService).logStringMessage(a);
+}
+
+function windowId(win) {
+    var util = win.QueryInterface(Components.interfaces.nsIInterfaceRequestor).getInterface(Components.interfaces.nsIDOMWindowUtils);  
+    return util.outerWindowID;
+}
+
+function textSize() {
+    try {
+        return Services.prefs.getIntPref(gPrefTextSize) / 1000;
+    } catch (e) {
+        return gPrefTextSizeDefault / 1000;
+    }
+}
+
 function TapTapWrap(aXulWindow) {
     this._xulWindow = aXulWindow;
     this._savedProperties = new Array();
-    try {
-        this._textSize = Services.prefs.getIntPref(gPrefTextSize) / 1000;
-    } catch (e) {
-        this._textSize = gPrefTextSizeDefault / 1000;
-    }
 
     Services.obs.addObserver(this, "Gesture:DoubleTap", false);
     aXulWindow.BrowserEventHandler._zoomOut_original = aXulWindow.BrowserEventHandler._zoomOut;
     aXulWindow.BrowserEventHandler._zoomOut = function() {
-        gTapTapWraps[aXulWindow].clearWrapping(aXulWindow.BrowserApp.selectedBrowser.contentWindow);
+        gTapTapWraps[windowId(aXulWindow)].clearWrapping(aXulWindow.BrowserApp.selectedBrowser.contentWindow);
         this._zoomOut_original();
     };
-    Services.prefs.addObserver(gPrefTextSize, this, false);
 }
 
 TapTapWrap.prototype = {
     detach: function() {
-        Services.prefs.removeObserver("extensions.taptapwrap.textsize", this, false);
+        // clear any wrapping we've done before we detach ourselves
+        var tabs = this._xulWindow.BrowserApp.tabs();
+        for (var i = 0; i < tabs.length; i++) {
+            this.clearWrapping(tabs[i].browser.contentWindow);
+        }
+
+        // undo stuff from the TapTapWrap constructor
         var xw = this._xulWindow;
         xw.BrowserEventHandler._zoomOut = xw.BrowserEventHandler._zoomOut_original;
         delete xw.BrowserEventHandler._zoomOut_original;
@@ -47,7 +60,7 @@ TapTapWrap.prototype = {
         }
         var props = { window: aWindow, properties: new Array() };
         this._savedProperties.push(props);
-        aWindow.addEventListener("unload", this.unloadListener, false);
+        aWindow.addEventListener("unload", this, false);
         return props.properties;
     },
 
@@ -56,7 +69,7 @@ TapTapWrap.prototype = {
             if (this._savedProperties[i].window == aWindow) {
                 var props = this._savedProperties[i];
                 this._savedProperties.splice(i, 1);
-                aWindow.removeEventListener("unload", this.unloadListener, false);
+                aWindow.removeEventListener("unload", this, false);
                 return props.properties;
             }
         }
@@ -80,8 +93,10 @@ TapTapWrap.prototype = {
         }
     },
 
-    unloadListener: function(e) {
-        this.clearWrapping(e.currentTarget);
+    handleEvent: function(e) {
+        if (e.type == "unload") {
+            this.clearWrapping(e.currentTarget);
+        }
     },
 
     shouldZoomToElement: function(element) {
@@ -114,7 +129,7 @@ TapTapWrap.prototype = {
             var viewport = xw.BrowserApp.selectedTab.getViewport();
             width = Math.min(width, viewport.cssPageRight - viewport.cssPageLeft);
             var zoom = (viewport.width / width);
-            var newFontSize = (this._textSize / zoom) + "in";
+            var newFontSize = (textSize() / zoom) + "in";
 
             var props = this.addPropertiesFor(element.ownerDocument.defaultView);
             var nodeIterator = element.ownerDocument.createNodeIterator(element, 1 /*SHOW_ELEMENT*/, null);
@@ -127,24 +142,18 @@ TapTapWrap.prototype = {
                 elem.style.fontSize = newFontSize;
                 elem.style.lineHeight = newFontSize;
             }
-        } else if (aTopic == "nsPref:changed" && aData == gPrefTextSize) {
-            try {
-                this._textSize = Services.prefs.getIntPref(gPrefTextSize) / 1000;
-            } catch (e) {
-                this._textSize = gPrefTextSizeDefault / 1000;
-            }
         }
     }
 };
 
 function attachTo(aWindow) {
-    gTapTapWraps[aWindow] = new TapTapWrap(aWindow);
+    gTapTapWraps[windowId(aWindow)] = new TapTapWrap(aWindow);
 }
 
 function detachFrom(aWindow) {
-    if (gTapTapWraps[aWindow]) {
-        gTapTapWraps[aWindow].detach();
-        delete gTapTapWraps[aWindow];
+    if (gTapTapWraps[windowId(aWindow)]) {
+        gTapTapWraps[windowId(aWindow)].detach();
+        delete gTapTapWraps[windowId(aWindow)];
     }
 }
 
@@ -170,6 +179,10 @@ function startup(aData, aReason) {
 
     var enumerator = Services.wm.getEnumerator("navigator:browser");
     while (enumerator.hasMoreElements()) {
+        // potential race condition here - the window may not be ready yet at
+        // this point, so ideally we would test for that. but i can't find a
+        // property that reflects whether or not UIReady has been fired, so
+        // for now just assume the window is ready
         attachTo(enumerator.getNext().QueryInterface(Ci.nsIDOMWindow));
     }
     Services.wm.addListener(browserListener);
