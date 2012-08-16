@@ -160,8 +160,8 @@ function detachFrom(aWindow) {
 var browserListener = {
     onOpenWindow: function(aWindow) {
         var win = aWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
-        win.addEventListener("UIReady", function(aEvent) {
-            win.removeEventListener("UIReady", win, false);
+        win.addEventListener("UIReady", function listener(aEvent) {
+            win.removeEventListener("UIReady", listener, false);
             attachTo(win);
         }, false);
     },
